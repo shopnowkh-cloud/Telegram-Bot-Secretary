@@ -11,23 +11,23 @@ if (!TOKEN) {
 const bot = new TelegramBot(TOKEN, { polling: true });
 
 function getMediaType(msg: TelegramBot.Message): string | undefined {
-  if (msg.photo) return "📷 Photo";
-  if (msg.video) return "🎥 Video";
-  if (msg.audio) return "🎵 Audio";
-  if (msg.voice) return "🎤 Voice message";
-  if (msg.document) return "📎 Document";
-  if (msg.sticker) return "🎭 Sticker";
+  if (msg.photo) return "📷 រូបភាព";
+  if (msg.video) return "🎥 វីដេអូ";
+  if (msg.audio) return "🎵 ឯកសារសំឡេង";
+  if (msg.voice) return "🎤 សារសំឡេង";
+  if (msg.document) return "📎 ឯកសារ";
+  if (msg.sticker) return "🎭 រូបតំណាង";
   if (msg.animation) return "🎞 GIF";
-  if (msg.video_note) return "📹 Video note";
-  if (msg.location) return "📍 Location";
-  if (msg.contact) return "👤 Contact";
-  if (msg.poll) return "📊 Poll";
+  if (msg.video_note) return "📹 វីដេអូចំណាំ";
+  if (msg.location) return "📍 ទីតាំង";
+  if (msg.contact) return "👤 ទំនាក់ទំនង";
+  if (msg.poll) return "📊 បោះឆ្នោត";
   return undefined;
 }
 
 function getDisplayName(user: TelegramBot.User): string {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ");
-  return name || user.username || `User#${user.id}`;
+  return name || user.username || `អ្នកប្រើ#${user.id}`;
 }
 
 bot.on("message", (msg) => {
@@ -73,7 +73,7 @@ bot.on("channel_post", (msg) => {
     messageId: msg.message_id,
     chatId: msg.chat.id,
     fromId: msg.chat.id,
-    fromName: msg.chat.title ?? "Channel",
+    fromName: msg.chat.title ?? "ឆានែល",
     text: msg.text,
     caption: msg.caption,
     mediaType: getMediaType(msg),
@@ -88,15 +88,15 @@ bot.on("message", (msg) => {
   const text = msg.text.trim();
 
   if (text === "/start") {
-    const name = msg.from ? getDisplayName(msg.from) : "there";
+    const name = msg.from ? getDisplayName(msg.from) : "មិត្ត";
     bot.sendMessage(
       msg.chat.id,
-      `👋 Hello, *${name}*!\n\n` +
-      `I'm your *Secretary Bot* 🤖\n\n` +
-      `I silently watch this chat and *notify you whenever someone deletes a message*.\n\n` +
-      `✅ Just add me to any group or keep me here in this private chat.\n` +
-      `🔔 I'll alert you instantly when a deleted message is detected.\n\n` +
-      `Type /help to see available commands.`,
+      `👋 សួស្តី *${name}*!\n\n` +
+      `ខ្ញុំជា *Bot លេខាធិការ* 🤖\n\n` +
+      `ខ្ញុំតាមដានការសន្ទនា ហើយ *ជូនដំណឹងភ្លាមៗ នៅពេលណាដែលនរណាម្នាក់លប់សារ*។\n\n` +
+      `✅ បន្ថែមខ្ញុំទៅក្រុម ឬប្រើប្រាស់ក្នុងការសន្ទនាឯកជន។\n` +
+      `🔔 ខ្ញុំនឹងជូនដំណឹងអំពីសារដែលត្រូវបានលប់ភ្លាមៗ។\n\n` +
+      `វាយ /help ដើម្បីមើលពាក្យបញ្ជា។`,
       { parse_mode: "Markdown" }
     );
     return;
@@ -105,12 +105,12 @@ bot.on("message", (msg) => {
   if (text === "/help") {
     bot.sendMessage(
       msg.chat.id,
-      `*Secretary Bot — Commands*\n\n` +
-      `/start — Welcome message\n` +
-      `/help — Show this help\n` +
-      `/status — Bot status\n\n` +
-      `*How it works:*\n` +
-      `I cache every message I see. When Telegram fires a delete event, I recover the original content and send you a notification instantly.`,
+      `*Bot លេខាធិការ — ពាក្យបញ្ជា*\n\n` +
+      `/start — សារស្វាគមន៍\n` +
+      `/help — មើលជំនួយ\n` +
+      `/status — ស្ថានភាព Bot\n\n` +
+      `*របៀបដំណើរការ:*\n` +
+      `ខ្ញុំរក្សាទុកសារទាំងអស់ដែលឃើញ។ នៅពេលមានការលប់សារ ខ្ញុំនឹងស្ដារខ្លឹមសារដើម ហើយជូនដំណឹងភ្លាមៗ។`,
       { parse_mode: "Markdown" }
     );
     return;
@@ -119,7 +119,7 @@ bot.on("message", (msg) => {
   if (text === "/status") {
     bot.sendMessage(
       msg.chat.id,
-      `✅ *Secretary Bot is running*\n\nI'm actively monitoring this chat for deleted messages.`,
+      `✅ *Bot លេខាធិការកំពុងដំណើរការ*\n\nខ្ញុំកំពុងតាមដានការសន្ទនានេះ ដើម្បីស្វែងរកការលប់សារ។`,
       { parse_mode: "Markdown" }
     );
     return;
@@ -127,10 +127,10 @@ bot.on("message", (msg) => {
 });
 
 function buildDeleteNotification(stored: StoredMessage, chatId: number, chatTitle?: string): string {
-  const time = new Date(stored.date * 1000).toLocaleString("en-US", {
-    timeZone: "UTC",
+  const time = new Date(stored.date * 1000).toLocaleString("km-KH", {
+    timeZone: "Asia/Phnom_Penh",
     year: "numeric",
-    month: "short",
+    month: "long",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
@@ -139,24 +139,24 @@ function buildDeleteNotification(stored: StoredMessage, chatId: number, chatTitl
   });
 
   const usernameStr = stored.fromUsername ? ` (@${stored.fromUsername})` : "";
-  const chatStr = chatTitle ? ` in *${chatTitle}*` : "";
+  const chatStr = chatTitle ? ` នៅក្នុង *${chatTitle}*` : "";
 
   let content = "";
   if (stored.text) {
-    content = `\n\n📝 *Content:*\n${stored.text}`;
+    content = `\n\n📝 *ខ្លឹមសារ:*\n${stored.text}`;
   } else if (stored.caption && stored.mediaType) {
-    content = `\n\n${stored.mediaType}\n📝 *Caption:* ${stored.caption}`;
+    content = `\n\n${stored.mediaType}\n📝 *ចំណងជើង:* ${stored.caption}`;
   } else if (stored.mediaType) {
-    content = `\n\n${stored.mediaType} _(no text)_`;
+    content = `\n\n${stored.mediaType} _(គ្មានអត្ថបទ)_`;
   } else {
-    content = `\n\n_(unknown content)_`;
+    content = `\n\n_(មិនដឹងខ្លឹមសារ)_`;
   }
 
   return (
-    `🚨 *Deleted Message Alert!*${chatStr}\n\n` +
-    `👤 *From:* ${stored.fromName}${usernameStr}\n` +
-    `🕐 *Sent at:* ${time} UTC\n` +
-    `🆔 *Message ID:* ${stored.messageId}` +
+    `🚨 *ការជូនដំណឹង — សារត្រូវបានលប់!*${chatStr}\n\n` +
+    `👤 *ពី:* ${stored.fromName}${usernameStr}\n` +
+    `🕐 *បានផ្ញើ:* ${time}\n` +
+    `🆔 *លេខសារ:* ${stored.messageId}` +
     content
   );
 }

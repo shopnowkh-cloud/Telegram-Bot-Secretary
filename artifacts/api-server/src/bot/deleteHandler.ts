@@ -7,20 +7,6 @@ export function setupDeleteHandler(bot: TelegramBot): void {
   bot.on("message", (msg) => {
     if (!msg.reply_to_message) return;
   });
-
-  // Telegram sends a service message with `message_auto_delete_timer_changed`
-  // but more importantly it fires a special update type for deleted messages.
-  // The most reliable way with polling is to listen for the raw update.
-  bot.on("message", (rawMsg) => {
-    const msg = rawMsg as TelegramBot.Message & {
-      pinned_message?: TelegramBot.Message;
-    };
-
-    // Handle pinned messages that reveal deleted content in some clients
-    if (msg.pinned_message) {
-      logger.debug({ chatId: msg.chat.id }, "Pinned message event");
-    }
-  });
 }
 
 export async function handleDeletedMessage(
@@ -32,7 +18,7 @@ export async function handleDeletedMessage(
   const stored = getMessage(chatId, messageId);
 
   if (!stored) {
-    logger.info({ chatId, messageId }, "Deleted message not in cache");
+    logger.info({ chatId, messageId }, "សារដែលលប់មិននៅក្នុង cache");
     return;
   }
 
@@ -40,9 +26,9 @@ export async function handleDeletedMessage(
 
   try {
     await bot.sendMessage(chatId, notification, { parse_mode: "Markdown" });
-    logger.info({ chatId, messageId, from: stored.fromName }, "Delete notification sent");
+    logger.info({ chatId, messageId, from: stored.fromName }, "បានផ្ញើការជូនដំណឹងការលប់សារ");
   } catch (err) {
-    logger.error({ err, chatId, messageId }, "Failed to send delete notification");
+    logger.error({ err, chatId, messageId }, "បរាជ័យក្នុងការផ្ញើការជូនដំណឹង");
   }
 
   deleteMessage(chatId, messageId);
