@@ -6,67 +6,62 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-// ── HTTP server សម្រាប់ health check ──────────────────────────────────────
+// ── HTTP health check ──────────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-  res.end("✅ Bot លេខាធិការកំពុងដំណើរការ");
-}).listen(PORT, () => console.log(`🌐 HTTP server បើក port ${PORT}`));
+  res.end("Bot running");
+}).listen(PORT, () => console.log(`HTTP server on port ${PORT}`));
 
-// ── Bot Init ──────────────────────────────────────────────────────────────
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const API_ID = parseInt(process.env.TELEGRAM_API_ID);
+// ── Config ────────────────────────────────────────────────────────────────
+const TOKEN   = process.env.TELEGRAM_BOT_TOKEN;
+const API_ID  = parseInt(process.env.TELEGRAM_API_ID);
 const API_HASH = process.env.TELEGRAM_API_HASH;
 const SESSION = process.env.TELEGRAM_SESSION || "";
 
-if (!TOKEN) {
-  console.error("❌ TELEGRAM_BOT_TOKEN មិនត្រូវបានកំណត់!");
-  process.exit(1);
+if (!TOKEN)            { console.error("TELEGRAM_BOT_TOKEN not set"); process.exit(1); }
+if (!API_ID || !API_HASH) { console.error("TELEGRAM_API_ID/HASH not set"); process.exit(1); }
+
+// ── HTML helpers ──────────────────────────────────────────────────────────
+function esc(text) {
+  if (!text && text !== 0) return "";
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
-if (!API_ID || !API_HASH) {
-  console.error("❌ TELEGRAM_API_ID ឬ TELEGRAM_API_HASH មិនត្រូវបានកំណត់!");
-  process.exit(1);
-}
+function b(text)  { return `<b>${esc(text)}</b>`; }
+function code(text) { return `<code>${esc(text)}</code>`; }
+const HTML = { parse_mode: "HTML" };
 
 // ── Active Users ──────────────────────────────────────────────────────────
 const USERS_FILE = path.join(__dirname, "users.json");
 
 function loadUsers() {
-  try {
-    return new Set(JSON.parse(fs.readFileSync(USERS_FILE, "utf8")));
-  } catch (_) {
-    return new Set();
-  }
+  try { return new Set(JSON.parse(fs.readFileSync(USERS_FILE, "utf8"))); }
+  catch (_) { return new Set(); }
 }
-
 function saveUsers(set) {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify([...set]), "utf8");
-  } catch (err) {
-    console.error(`[កំហុស] save users: ${err.message}`);
-  }
+  try { fs.writeFileSync(USERS_FILE, JSON.stringify([...set]), "utf8"); }
+  catch (err) { console.error("save users:", err.message); }
 }
-
 function addUser(chatId) {
   if (!activeUsers.has(chatId)) {
     activeUsers.add(chatId);
     saveUsers(activeUsers);
-    console.log(`[User] ចុះឈ្មោះ chat ${chatId} — សរុប: ${activeUsers.size} នាក់`);
+    console.log(`[User] registered ${chatId} — total: ${activeUsers.size}`);
   }
 }
 
 const activeUsers = loadUsers();
-console.log(`[User] load ${activeUsers.size} users ពី file`);
+console.log(`[User] loaded ${activeUsers.size} users`);
 
-// ── Bot (for sending notifications) ──────────────────────────────────────
+// ── Bot ───────────────────────────────────────────────────────────────────
 const bot = new TelegramBot(TOKEN, {
   polling: {
     interval: 1000,
     autoStart: true,
-    params: {
-      timeout: 30,
-      allowed_updates: ["message", "edited_message", "channel_post", "callback_query"],
-    },
+    params: { timeout: 30, allowed_updates: ["message", "edited_message", "channel_post", "callback_query"] },
   },
 });
 
@@ -74,22 +69,17 @@ const bot = new TelegramBot(TOKEN, {
 const messageStore = new Map();
 const MAX_MESSAGES = 10000;
 
-function storeKey(chatId, messageId) {
-  return `${chatId}:${messageId}`;
-}
+function storeKey(chatId, messageId) { return `${chatId}:${messageId}`; }
 
 function saveMessage(data) {
   if (messageStore.size >= MAX_MESSAGES) {
-    const firstKey = messageStore.keys().next().value;
-    messageStore.delete(firstKey);
+    messageStore.delete(messageStore.keys().next().value);
   }
   messageStore.set(storeKey(data.chatId, data.messageId), data);
 }
-
 function getStoredMessage(chatId, messageId) {
   return messageStore.get(storeKey(chatId, messageId));
 }
-
 function removeStoredMessage(chatId, messageId) {
   messageStore.delete(storeKey(chatId, messageId));
 }
@@ -97,9 +87,8 @@ function removeStoredMessage(chatId, messageId) {
 // ── Helpers ───────────────────────────────────────────────────────────────
 function getDisplayName(user) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ");
-  return name || user.username || `អ្នកប្រើ#${user.id}`;
+  return name || user.username || `user#${user.id}`;
 }
-
 function getMediaType(msg) {
   if (msg.photo)      return "📷 រូបភាព";
   if (msg.video)      return "🎥 វីដេអូ";
@@ -114,7 +103,6 @@ function getMediaType(msg) {
   if (msg.poll)       return "📊 បោះឆ្នោត";
   return undefined;
 }
-
 function nowKH() {
   return new Date().toLocaleString("km-KH", {
     timeZone: "Asia/Phnom_Penh",
@@ -123,21 +111,20 @@ function nowKH() {
     hour12: false,
   });
 }
-
 async function typing(chatId) {
   try { await bot.sendChatAction(chatId, "typing"); } catch (_) {}
 }
 
 // ── Notify all active users ───────────────────────────────────────────────
-async function notifyAll(text) {
+async function notifyAll(text, opts = {}) {
   if (activeUsers.size === 0) {
-    console.log("[ព័ត៌មាន] notifyAll — គ្មានអ្នកប្រើ");
+    console.log("[notifyAll] no users — send /start first");
     return;
   }
   let removed = false;
   for (const chatId of activeUsers) {
     try {
-      await bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
+      await bot.sendMessage(chatId, text, opts);
     } catch (err) {
       if (err.message && (
         err.message.includes("bot was blocked") ||
@@ -146,9 +133,9 @@ async function notifyAll(text) {
       )) {
         activeUsers.delete(chatId);
         removed = true;
-        console.log(`[ព័ត៌មាន] លុប chat ${chatId} — block/not found`);
+        console.log(`[notifyAll] removed ${chatId}`);
       } else {
-        console.error(`[កំហុស] មិនអាចផ្ញើជូន ${chatId}: ${err.message}`);
+        console.error(`[notifyAll] failed ${chatId}: ${err.message}`);
       }
     }
   }
@@ -157,17 +144,15 @@ async function notifyAll(text) {
 
 // ── Secretary Mode ────────────────────────────────────────────────────────
 const secretaryMode = new Map();
-function isSecretaryOn(chatId) {
-  return secretaryMode.get(chatId) !== false;
-}
+function isSecretaryOn(chatId) { return secretaryMode.get(chatId) !== false; }
 
-// ── Handle deleted message ────────────────────────────────────────────────
+// ── Handle deleted message notification ───────────────────────────────────
 async function handleDeletedMessage(chatId, messageId, chatTitle) {
   if (!isSecretaryOn(chatId)) return;
 
   const stored = getStoredMessage(chatId, messageId);
   if (!stored) {
-    console.log(`[ព័ត៌មាន] សារ ${messageId} មិននៅក្នុងស្តុក (chatId: ${chatId})`);
+    console.log(`[delete] msg ${messageId} not in store (chat ${chatId})`);
     return;
   }
 
@@ -178,77 +163,75 @@ async function handleDeletedMessage(chatId, messageId, chatTitle) {
     hour12: false,
   });
 
-  const usernameStr = stored.fromUsername ? ` (@${stored.fromUsername})` : "";
-  const chatStr = chatTitle ? ` នៅក្នុង *${chatTitle}*` : "";
+  const usernameStr = stored.fromUsername ? ` (@${esc(stored.fromUsername)})` : "";
+  const chatStr     = chatTitle ? ` នៅក្នុង ${b(chatTitle)}` : "";
 
   let content = "";
   if (stored.text) {
-    content = `\n\n📝 *ខ្លឹមសារ:*\n${stored.text}`;
+    content = `\n\n📝 ${b("ខ្លឹមសារ:")}\n${esc(stored.text)}`;
   } else if (stored.caption && stored.mediaType) {
-    content = `\n\n${stored.mediaType}\n📝 *ចំណងជើង:* ${stored.caption}`;
+    content = `\n\n${esc(stored.mediaType)}\n📝 ${b("ចំណងជើង:")} ${esc(stored.caption)}`;
   } else if (stored.mediaType) {
-    content = `\n\n${stored.mediaType} _(គ្មានអត្ថបទ)_`;
+    content = `\n\n${esc(stored.mediaType)} <i>(គ្មានអត្ថបទ)</i>`;
   } else {
-    content = `\n\n_(មិនដឹងខ្លឹមសារ)_`;
+    content = `\n\n<i>(មិនដឹងខ្លឹមសារ)</i>`;
   }
 
   const notification =
-    `🚨 *ការជូនដំណឹង — សារត្រូវបានលប់!*${chatStr}\n\n` +
-    `👤 *ពី:* ${stored.fromName}${usernameStr}\n` +
-    `🕐 *បានផ្ញើ:* ${time}\n` +
-    `🆔 *លេខសារ:* ${stored.messageId}` +
+    `🚨 ${b("ការជូនដំណឹង — សារត្រូវបានលប់!")}${chatStr}\n\n` +
+    `👤 ${b("ពី:")} ${esc(stored.fromName)}${usernameStr}\n` +
+    `🕐 ${b("បានផ្ញើ:")} ${esc(time)}\n` +
+    `🆔 ${b("លេខសារ:")} ${code(stored.messageId)}` +
     content;
 
   try {
-    await notifyAll(notification);
-    console.log(`[ជូនដំណឹង] សារ ${messageId} — ពី: ${stored.fromName}`);
+    await notifyAll(notification, HTML);
+    console.log(`[notify] deleted msg ${messageId} from ${stored.fromName}`);
   } catch (err) {
-    console.error(`[កំហុស] មិនអាចផ្ញើការជូនដំណឹង: ${err.message}`);
+    console.error(`[notify] error: ${err.message}`);
   }
 
   removeStoredMessage(chatId, messageId);
 }
 
-// ── GramJS User Client (MTProto — detects deleted messages) ───────────────
+// ── GramJS User Client (MTProto delete detection) ────────────────────────
 async function startUserClient() {
   if (!SESSION) {
-    console.log("[GramJS] ⚠️ TELEGRAM_SESSION មិនត្រូវបានកំណត់ — delete detection មិនដំណើរការ");
-    console.log("[GramJS] ▶ សូម run: node generate-session.js ហើយបញ្ចូល TELEGRAM_SESSION");
+    console.log("[GramJS] TELEGRAM_SESSION not set — run: node generate-session.js");
     return;
   }
 
   const client = new TelegramClient(
-    new StringSession(SESSION),
-    API_ID,
-    API_HASH,
+    new StringSession(SESSION), API_ID, API_HASH,
     { connectionRetries: 5, useWSS: false }
   );
 
   try {
     await client.connect();
     const me = await client.getMe();
-    console.log(`[GramJS] ✅ User client ភ្ជាប់ជាមួយ: ${me.firstName} (@${me.username || me.id})`);
+    console.log(`[GramJS] connected as: ${me.firstName} (@${me.username || me.id})`);
 
-    // Store messages via user client (catches all messages including those bot misses)
+    // Store all incoming messages
     client.addEventHandler(async (event) => {
       const msg = event.message;
       if (!msg || !msg.peerId) return;
       const chatId = Number(msg.peerId.channelId || msg.peerId.chatId || msg.peerId.userId);
       const fromId = msg.fromId ? Number(msg.fromId.userId || msg.fromId.channelId || 0) : chatId;
 
-      let fromName = "មិនដឹង";
+      let fromName = "Unknown";
       try {
         const sender = await msg.getSender();
         if (sender) {
-          fromName = [sender.firstName, sender.lastName].filter(Boolean).join(" ") || sender.username || `id:${fromId}`;
+          fromName = [sender.firstName, sender.lastName].filter(Boolean).join(" ")
+            || sender.username || `id:${fromId}`;
         }
       } catch (_) {}
 
       saveMessage({
         messageId: msg.id,
-        chatId: chatId,
-        fromId: fromId,
-        fromName: fromName,
+        chatId,
+        fromId,
+        fromName,
         fromUsername: null,
         text: msg.message || null,
         caption: msg.message || null,
@@ -257,7 +240,7 @@ async function startUserClient() {
       });
     }, new NewMessage({}));
 
-    // Detect deleted messages
+    // Detect deletions
     client.addEventHandler(async (event) => {
       const deletedIds = event.deletedIds;
       if (!deletedIds || deletedIds.length === 0) return;
@@ -273,27 +256,24 @@ async function startUserClient() {
         }
       } catch (_) {}
 
-      console.log(`[GramJS] 🗑 Delete event: IDs=${deletedIds.join(",")} chatId=${chatId}`);
+      console.log(`[GramJS] delete event: ids=${deletedIds.join(",")} chat=${chatId}`);
 
       for (const msgId of deletedIds) {
-        // ព្យាយាម find chatId ពី messageStore ប្រសិនបើ event.peer គ្មាន
-        if (!chatId) {
-          for (const [key, val] of messageStore) {
-            if (val.messageId === msgId) {
-              chatId = val.chatId;
-              break;
-            }
+        let resolvedChatId = chatId;
+        if (!resolvedChatId) {
+          for (const [, val] of messageStore) {
+            if (val.messageId === msgId) { resolvedChatId = val.chatId; break; }
           }
         }
-        if (chatId) {
-          await handleDeletedMessage(chatId, msgId, chatTitle);
+        if (resolvedChatId) {
+          await handleDeletedMessage(resolvedChatId, msgId, chatTitle);
         }
       }
     }, new DeletedMessage({}));
 
-    console.log("[GramJS] 👂 កំពុងស្តាប់ delete events...");
+    console.log("[GramJS] listening for delete events...");
   } catch (err) {
-    console.error(`[GramJS] ❌ មិនអាចភ្ជាប់: ${err.message}`);
+    console.error(`[GramJS] connect failed: ${err.message}`);
   }
 }
 
@@ -305,25 +285,23 @@ bot.onText(/\/start/, async (msg) => {
   const modeStatus = isSecretaryOn(msg.chat.id) ? "🟢 បើក" : "🔴 បិទ";
   const sessionStatus = SESSION ? "✅ GramJS ភ្ជាប់" : "⚠️ SESSION_STRING មិនទាន់កំណត់";
 
-  await bot.sendMessage(
-    msg.chat.id,
-    `👋 សួស្តី *${name}*!\n\n` +
-    `ខ្ញុំជា *Bot លេខាធិការ* 🤖\n\n` +
-    `ខ្ញុំតាមដានការសន្ទនា ហើយ *ជូនដំណឹងភ្លាមៗ នៅពេលណាដែលនរណាម្នាក់លប់សារ*។\n\n` +
-    `📋 *Secretary Mode:* ${modeStatus}\n` +
-    `🔌 *Delete Detection:* ${sessionStatus}\n\n` +
+  await bot.sendMessage(msg.chat.id,
+    `👋 សួស្តី ${b(name)}!\n\n` +
+    `ខ្ញុំជា ${b("Bot លេខាធិការ")} 🤖\n\n` +
+    `ខ្ញុំតាមដានការសន្ទនា ហើយ ${b("ជូនដំណឹងភ្លាមៗ នៅពេលណាដែលនរណាម្នាក់លប់សារ")}។\n\n` +
+    `📋 ${b("Secretary Mode:")} ${modeStatus}\n` +
+    `🔌 ${b("Delete Detection:")} ${sessionStatus}\n\n` +
     `✅ បន្ថែមខ្ញុំទៅក្រុម ឬប្រើក្នុងការសន្ទនាឯកជន\n` +
     `🔔 ខ្ញុំជូនដំណឹងភ្លាមៗ នៅពេលមានការលប់សារ\n\n` +
     `វាយ /help ដើម្បីមើលពាក្យបញ្ជា`,
-    { parse_mode: "Markdown" }
+    HTML
   );
 });
 
 bot.onText(/\/help/, async (msg) => {
   await typing(msg.chat.id);
-  await bot.sendMessage(
-    msg.chat.id,
-    `*📖 Bot លេខាធិការ — ពាក្យបញ្ជា*\n\n` +
+  await bot.sendMessage(msg.chat.id,
+    `📖 ${b("Bot លេខាធិការ — ពាក្យបញ្ជា")}\n\n` +
     `▸ /start — សារស្វាគមន៍\n` +
     `▸ /help — មើលជំនួយ\n` +
     `▸ /status — ស្ថានភាព Bot\n` +
@@ -331,10 +309,10 @@ bot.onText(/\/help/, async (msg) => {
     `▸ /secretary_on — បើក Secretary Mode\n` +
     `▸ /secretary_off — បិទ Secretary Mode\n` +
     `▸ /test — សាកល្បង Secretary Mode\n\n` +
-    `*🔍 របៀបដំណើរការ:*\n` +
+    `🔍 ${b("របៀបដំណើរការ:")}\n` +
     `Bot ប្រើ GramJS (MTProto) ដើម្បី detect deletion ពិតប្រាកដ។\n\n` +
-    `⚠️ *ចំណាំ:* ក្នុងក្រុម សូមតែងតាំង Bot ជា *Admin*`,
-    { parse_mode: "Markdown" }
+    `⚠️ ${b("ចំណាំ:")} ក្នុងក្រុម សូមតែងតាំង Bot ជា ${b("Admin")}`,
+    HTML
   );
 });
 
@@ -345,54 +323,49 @@ bot.onText(/\/myid/, async (msg) => {
   const chatId = msg.chat.id;
   const chatType = msg.chat.type === "private" ? "ឯកជន" : msg.chat.type;
 
-  await bot.sendMessage(
-    msg.chat.id,
-    `🪪 *Chat ID របស់អ្នក*\n\n` +
-    `👤 *User ID:* \`${userId}\`\n` +
-    `💬 *Chat ID:* \`${chatId}\`\n` +
-    `📂 *ប្រភេទ:* ${chatType}\n\n` +
+  await bot.sendMessage(msg.chat.id,
+    `🪪 ${b("Chat ID របស់អ្នក")}\n\n` +
+    `👤 ${b("User ID:")} ${code(userId)}\n` +
+    `💬 ${b("Chat ID:")} ${code(chatId)}\n` +
+    `📂 ${b("ប្រភេទ:")} ${esc(chatType)}\n\n` +
     `✅ អ្នកបានចុះឈ្មោះទទួល notification ហើយ!`,
-    { parse_mode: "Markdown" }
+    HTML
   );
 });
 
 bot.onText(/\/status/, async (msg) => {
   addUser(msg.chat.id);
   await typing(msg.chat.id);
-  const total = messageStore.size;
   const modeStatus = isSecretaryOn(msg.chat.id) ? "🟢 បើក" : "🔴 បិទ";
   const sessionStatus = SESSION ? "✅ GramJS ភ្ជាប់" : "⚠️ SESSION_STRING មិនទាន់កំណត់";
 
-  await bot.sendMessage(
-    msg.chat.id,
-    `*🤖 ស្ថានភាព Bot លេខាធិការ*\n\n` +
-    `📋 Secretary Mode: *${modeStatus}*\n` +
-    `🔌 Delete Detection: *${sessionStatus}*\n` +
-    `📦 សារក្នុងស្តុក: *${total}* សារ\n` +
-    `👥 អ្នកប្រើ active: *${activeUsers.size}* នាក់\n` +
-    `⚡ Polling: *កំពុងដំណើរការ*\n` +
-    `🕐 Server: *Online*`,
-    { parse_mode: "Markdown" }
+  await bot.sendMessage(msg.chat.id,
+    `🤖 ${b("ស្ថានភាព Bot លេខាធិការ")}\n\n` +
+    `📋 Secretary Mode: ${b(modeStatus)}\n` +
+    `🔌 Delete Detection: ${b(sessionStatus)}\n` +
+    `📦 សារក្នុងស្តុក: ${b(messageStore.size)} សារ\n` +
+    `👥 អ្នកប្រើ active: ${b(activeUsers.size)} នាក់\n` +
+    `⚡ Polling: ${b("កំពុងដំណើរការ")}\n` +
+    `🕐 Server: ${b("Online")}`,
+    HTML
   );
 });
 
 bot.onText(/\/secretary_on/, async (msg) => {
   await typing(msg.chat.id);
   secretaryMode.set(msg.chat.id, true);
-  await bot.sendMessage(
-    msg.chat.id,
-    `🟢 *Secretary Mode បានបើក!*\n\nខ្ញុំនឹងតាមដាន ហើយជូនដំណឹងភ្លាមៗ នៅពេលណាមានការលប់សារ។`,
-    { parse_mode: "Markdown" }
+  await bot.sendMessage(msg.chat.id,
+    `🟢 ${b("Secretary Mode បានបើក!")}\n\nខ្ញុំនឹងតាមដាន ហើយជូនដំណឹងភ្លាមៗ នៅពេលណាមានការលប់សារ។`,
+    HTML
   );
 });
 
 bot.onText(/\/secretary_off/, async (msg) => {
   await typing(msg.chat.id);
   secretaryMode.set(msg.chat.id, false);
-  await bot.sendMessage(
-    msg.chat.id,
-    `🔴 *Secretary Mode បានបិទ!*\n\nខ្ញុំនឹងមិនជូនដំណឹងអំពីការលប់សារទៀតទេ។`,
-    { parse_mode: "Markdown" }
+  await bot.sendMessage(msg.chat.id,
+    `🔴 ${b("Secretary Mode បានបិទ!")}\n\nខ្ញុំនឹងមិនជូនដំណឹងអំពីការលប់សារទៀតទេ។`,
+    HTML
   );
 });
 
@@ -401,32 +374,32 @@ bot.onText(/\/secretary (.+)/, async (msg, match) => {
   const arg = (match[1] || "").trim().toLowerCase();
   if (arg === "on") {
     secretaryMode.set(msg.chat.id, true);
-    await bot.sendMessage(msg.chat.id, `🟢 *Secretary Mode បានបើក!*`, { parse_mode: "Markdown" });
+    await bot.sendMessage(msg.chat.id, `🟢 ${b("Secretary Mode បានបើក!")}`, HTML);
   } else if (arg === "off") {
     secretaryMode.set(msg.chat.id, false);
-    await bot.sendMessage(msg.chat.id, `🔴 *Secretary Mode បានបិទ!*`, { parse_mode: "Markdown" });
+    await bot.sendMessage(msg.chat.id, `🔴 ${b("Secretary Mode បានបិទ!")}`, HTML);
   } else {
-    await bot.sendMessage(msg.chat.id, `❓ សូមប្រើ: /secretary_on ឬ /secretary_off`, { parse_mode: "Markdown" });
+    await bot.sendMessage(msg.chat.id, `❓ សូមប្រើ: /secretary_on ឬ /secretary_off`, HTML);
   }
 });
 
 bot.onText(/\/test/, async (msg) => {
   await typing(msg.chat.id);
   if (!isSecretaryOn(msg.chat.id)) {
-    await bot.sendMessage(msg.chat.id, `🔴 Secretary Mode បានបិទ។ វាយ /secretary_on ដើម្បីបើក។`, { parse_mode: "Markdown" });
+    await bot.sendMessage(msg.chat.id,
+      `🔴 Secretary Mode បានបិទ។ វាយ /secretary_on ដើម្បីបើក។`, HTML);
     return;
   }
   const fromName = msg.from ? getDisplayName(msg.from) : "សាកល្បង";
-  await bot.sendMessage(
-    msg.chat.id,
-    `🧪 *ការសាកល្បង Secretary Mode*\n\nBot ✅ ដំណើរការបានល្អ!\n\n` +
-    `🔌 Delete Detection: ${SESSION ? "✅ GramJS ភ្ជាប់ — អាចឮ deletion events" : "⚠️ SESSION_STRING មិនទាន់កំណត់"}`,
-    { parse_mode: "Markdown" }
+  await bot.sendMessage(msg.chat.id,
+    `🧪 ${b("ការសាកល្បង Secretary Mode")}\n\nBot ✅ ដំណើរការបានល្អ!\n\n` +
+    `🔌 Delete Detection: ${SESSION ? "✅ GramJS ភ្ជាប់" : "⚠️ SESSION_STRING មិនទាន់កំណត់"}`,
+    HTML
   );
-  console.log(`[សាកល្បង] test by ${fromName} in chat ${msg.chat.id}`);
+  console.log(`[test] by ${fromName} in chat ${msg.chat.id}`);
 });
 
-// ── Store messages from Bot polling ──────────────────────────────────────
+// ── Store messages from polling ────────────────────────────────────────────
 function storeMsg(msg, fromUser) {
   if (!fromUser) return;
   saveMessage({
@@ -458,7 +431,7 @@ bot.on("channel_post",   (msg) => {
 });
 
 bot.on("polling_error", (err) => {
-  console.error(`[កំហុស] Polling: ${err.message}`);
+  console.error(`[polling_error] ${err.message}`);
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────
@@ -466,12 +439,12 @@ let isShuttingDown = false;
 async function shutdown(signal) {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log(`[🔴 Disconnect] ទទួលបាន ${signal} — Bot កំពុងបិទ...`);
+  console.log(`[shutdown] signal: ${signal}`);
   await notifyAll(
-    `🔴 *Bot លេខាធិការ — Disconnected!*\n\n` +
-    `🕐 *ពេលវេលា:* ${nowKH()}\n` +
-    `⚙️ *សញ្ញា:* ${signal}\n\n` +
-    `_Bot ត្រូវបានបិទ ឬចាប់ផ្ដើមឡើងវិញ។_`
+    `🔴 ${b("Bot លេខាធិការ បានផ្តាច់!")}\n\n` +
+    `ពេលវេលា: ${esc(nowKH())}\n` +
+    `Bot ត្រូវបានបិទ ឬចាប់ផ្ដើមឡើងវិញ។`,
+    HTML
   );
   try { await bot.stopPolling(); } catch (_) {}
   process.exit(0);
@@ -479,14 +452,17 @@ async function shutdown(signal) {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT",  () => shutdown("SIGINT"));
-process.on("uncaughtException", async (err) => {
-  console.error(`[កំហុស] uncaughtException: ${err.message}`);
-  process.exit(1);
+process.on("uncaughtException", (err) => {
+  console.error(`[uncaughtException] ${err.message}`);
+  if (!err.message.includes("ETELEGRAM")) process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error(`[unhandledRejection] ${reason}`);
 });
 
 // ── Startup ───────────────────────────────────────────────────────────────
 bot.getMe().then(async (me) => {
-  console.log(`✅ Bot បានចាប់ផ្ដើម: @${me.username} (id: ${me.id})`);
+  console.log(`Bot started: @${me.username} (id: ${me.id})`);
 
   await bot.setMyCommands([
     { command: "start",         description: "👋 ចាប់ផ្ដើម / សារស្វាគមន៍" },
@@ -497,19 +473,20 @@ bot.getMe().then(async (me) => {
     { command: "secretary_off", description: "🔴 បិទ Secretary Mode" },
     { command: "test",          description: "🧪 សាកល្បង Secretary Mode" },
   ]);
-  console.log(`📋 Command menu បានកំណត់ក្នុង Telegram ✅`);
 
-  // Start GramJS user client
   await startUserClient();
 
+  const sessionStatus = SESSION ? "GramJS connected" : "SESSION not set";
   await notifyAll(
-    `🟢 *Bot លេខាធិការ — Connected!*\n\n` +
-    `🤖 *Bot:* @${me.username}\n` +
-    `🕐 *ពេលវេលា:* ${nowKH()}\n` +
-    `🔌 *Delete Detection:* ${SESSION ? "✅ GramJS ភ្ជាប់" : "⚠️ SESSION_STRING មិនទាន់កំណត់"}\n\n` +
-    `_Bot ដំណើរការ ហើយរួចរាល់ក្នុងការតាមដាន។_`
+    `🟢 ${b("Bot លេខាធិការ បានភ្ជាប់!")}\n\n` +
+    `Bot: @${esc(me.username)}\n` +
+    `ពេលវេលា: ${esc(nowKH())}\n` +
+    `Delete Detection: ${sessionStatus}\n\n` +
+    `<i>Bot ដំណើរការ ហើយរួចរាល់ក្នុងការតាមដាន។</i>`,
+    HTML
   );
+  console.log("Startup complete.");
 }).catch((err) => {
-  console.error(`❌ មិនអាចភ្ជាប់ Bot: ${err.message}`);
+  console.error(`Bot connect failed: ${err.message}`);
   process.exit(1);
 });
