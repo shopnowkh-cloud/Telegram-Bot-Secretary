@@ -7,6 +7,8 @@
     "start": "node bot.js"
   },
   "dependencies": {
-    "node-telegram-bot-api": "^0.67.0"
+    "input": "^1.0.1",
+    "node-telegram-bot-api": "^0.67.0",
+    "telegram": "^2.26.22"
   }
 }
