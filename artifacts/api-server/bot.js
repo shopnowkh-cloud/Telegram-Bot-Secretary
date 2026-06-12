@@ -15,9 +15,9 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-// OWNER_CHAT_ID — Chat ID របស់ Admin (ទទួលការជូនដំណឹង connect/disconnect)
-// វាយ /myid ដើម្បីដឹង Chat ID របស់អ្នក ហើយដាក់ក្នុង Secrets ជា OWNER_CHAT_ID
-const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID ? String(process.env.OWNER_CHAT_ID) : null;
+// ── Active Users — ទទួល connect/disconnect notification ───────────────────
+// រក្សាទុក chatId របស់អ្នកប្រើទាំងអស់ដែលបានប្រើ Bot
+const activeUsers = new Set();
 
 const bot = new TelegramBot(TOKEN, {
   polling: {
@@ -37,13 +37,20 @@ const bot = new TelegramBot(TOKEN, {
   },
 });
 
-// ── Notify owner helper ───────────────────────────────────────────────────
-async function notifyOwner(text) {
-  if (!OWNER_CHAT_ID) return;
-  try {
-    await bot.sendMessage(OWNER_CHAT_ID, text, { parse_mode: "Markdown" });
-  } catch (err) {
-    console.error(`[កំហុស] មិនអាចផ្ញើជូន Owner: ${err.message}`);
+// ── Notify all active users ───────────────────────────────────────────────
+async function notifyAll(text) {
+  for (const chatId of activeUsers) {
+    try {
+      await bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
+    } catch (err) {
+      // ប្រសិនបើ user block Bot ឬ chat លែងមាន — លុបចេញ
+      if (err.message && (err.message.includes("bot was blocked") || err.message.includes("chat not found"))) {
+        activeUsers.delete(chatId);
+        console.log(`[ព័ត៌មាន] លុប chat ${chatId} ចេញពី active users`);
+      } else {
+        console.error(`[កំហុស] មិនអាចផ្ញើជូន ${chatId}: ${err.message}`);
+      }
+    }
   }
 }
 
@@ -119,6 +126,7 @@ async function typing(chatId) {
 
 // ── Commands ──────────────────────────────────────────────────────────────
 bot.onText(/\/start/, async (msg) => {
+  activeUsers.add(msg.chat.id); // ចុះឈ្មោះ user ឱ្យទទួល connect/disconnect notification
   await typing(msg.chat.id);
   const name = msg.from ? getDisplayName(msg.from) : "មិត្ត";
   const modeStatus = isSecretaryOn(msg.chat.id) ? "🟢 បើក" : "🔴 បិទ";
@@ -156,6 +164,7 @@ bot.onText(/\/help/, async (msg) => {
 });
 
 bot.onText(/\/myid/, async (msg) => {
+  activeUsers.add(msg.chat.id);
   await typing(msg.chat.id);
   const userId = msg.from ? msg.from.id : "មិនដឹង";
   const chatId = msg.chat.id;
@@ -167,24 +176,23 @@ bot.onText(/\/myid/, async (msg) => {
     `👤 *User ID:* \`${userId}\`\n` +
     `💬 *Chat ID:* \`${chatId}\`\n` +
     `📂 *ប្រភេទ:* ${chatType}\n\n` +
-    `📌 *ចម្លង Chat ID ខាងលើ* ហើយដាក់ក្នុង Replit Secrets ជា \`OWNER_CHAT_ID\`\n` +
-    `បន្ទាប់មក Bot នឹងផ្ញើការជូនដំណឹង connect/disconnect មកអ្នក!`,
+    `✅ អ្នកបានចុះឈ្មោះទទួល connect/disconnect notification ហើយ!`,
     { parse_mode: "Markdown" }
   );
 });
 
 bot.onText(/\/status/, async (msg) => {
+  activeUsers.add(msg.chat.id);
   await typing(msg.chat.id);
   const total = messageStore.size;
   const modeStatus = isSecretaryOn(msg.chat.id) ? "🟢 បើក" : "🔴 បិទ";
-  const ownerStatus = OWNER_CHAT_ID ? "✅ បានកំណត់" : "⚠️ មិនទាន់កំណត់";
 
   await bot.sendMessage(
     msg.chat.id,
     `*🤖 ស្ថានភាព Bot លេខាធិការ*\n\n` +
     `📋 Secretary Mode: *${modeStatus}*\n` +
     `📦 សារក្នុងស្តុក: *${total}* សារ\n` +
-    `🔔 Connect/Disconnect Alert: *${ownerStatus}*\n` +
+    `👥 អ្នកប្រើ active: *${activeUsers.size}* នាក់\n` +
     `⚡ Polling: *កំពុងដំណើរការ*\n` +
     `🕐 Server: *Online*`,
     { parse_mode: "Markdown" }
@@ -391,7 +399,7 @@ async function shutdown(signal) {
 
   console.log(`[🔴 Disconnect] ទទួលបាន ${signal} — Bot កំពុងបិទ...`);
 
-  await notifyOwner(
+  await notifyAll(
     `🔴 *Bot លេខាធិការ — Disconnected!*\n\n` +
     `🕐 *ពេលវេលា:* ${nowKH()}\n` +
     `⚙️ *សញ្ញា:* ${signal}\n\n` +
@@ -409,7 +417,7 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT",  () => shutdown("SIGINT"));
 process.on("uncaughtException", async (err) => {
   console.error(`[កំហុស] uncaughtException: ${err.message}`);
-  await notifyOwner(
+  await notifyAll(
     `🆘 *Bot — Crashed!*\n\n` +
     `🕐 *ពេលវេលា:* ${nowKH()}\n` +
     `❌ *កំហុស:* ${err.message}`
@@ -421,7 +429,7 @@ process.on("uncaughtException", async (err) => {
 bot.getMe().then(async (me) => {
   console.log(`✅ Bot បានចាប់ផ្ដើម: @${me.username} (id: ${me.id})`);
   console.log(`📋 Secretary Mode: បើកដោយស្វ័យប្រវត្តិ`);
-  console.log(`🔔 Connect/Disconnect Alert: ${OWNER_CHAT_ID ? "✅ " + OWNER_CHAT_ID : "⚠️ OWNER_CHAT_ID មិនទាន់កំណត់ — វាយ /myid ដើម្បីយក Chat ID"}`);
+  console.log(`🔔 Connect/Disconnect: ជូនដំណឹងដល់អ្នកប្រើទាំងអស់`);
 
   // ── កំណត់ Command Menu ─────────────────────────────────────────────────
   await bot.setMyCommands([
@@ -435,7 +443,7 @@ bot.getMe().then(async (me) => {
   ]);
   console.log(`📋 Command menu បានកំណត់ក្នុង Telegram ✅`);
 
-  await notifyOwner(
+  await notifyAll(
     `🟢 *Bot លេខាធិការ — Connected!*\n\n` +
     `🤖 *Bot:* @${me.username}\n` +
     `🕐 *ពេលវេលា:* ${nowKH()}\n` +
