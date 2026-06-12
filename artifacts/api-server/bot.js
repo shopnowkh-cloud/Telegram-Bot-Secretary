@@ -45,11 +45,12 @@ function saveUsers(set) {
   try { fs.writeFileSync(USERS_FILE, JSON.stringify([...set]), "utf8"); }
   catch (err) { console.error("save users:", err.message); }
 }
-function addUser(chatId) {
+function addUser(chatId, chatType) {
+  if (chatType && chatType !== "private") return;
   if (!activeUsers.has(chatId)) {
     activeUsers.add(chatId);
     saveUsers(activeUsers);
-    console.log(`[User] registered ${chatId} — total: ${activeUsers.size}`);
+    console.log(`[User] registered private chat ${chatId} — total: ${activeUsers.size}`);
   }
 }
 
@@ -279,7 +280,7 @@ async function startUserClient() {
 
 // ── Bot Commands ──────────────────────────────────────────────────────────
 bot.onText(/\/start/, async (msg) => {
-  addUser(msg.chat.id);
+  addUser(msg.chat.id, msg.chat.type);
   await typing(msg.chat.id);
   const name = msg.from ? getDisplayName(msg.from) : "មិត្ត";
   const modeStatus = isSecretaryOn(msg.chat.id) ? "🟢 បើក" : "🔴 បិទ";
@@ -291,8 +292,9 @@ bot.onText(/\/start/, async (msg) => {
     `ខ្ញុំតាមដានការសន្ទនា ហើយ ${b("ជូនដំណឹងភ្លាមៗ នៅពេលណាដែលនរណាម្នាក់លប់សារ")}។\n\n` +
     `📋 ${b("Secretary Mode:")} ${modeStatus}\n` +
     `🔌 ${b("Delete Detection:")} ${sessionStatus}\n\n` +
-    `✅ បន្ថែមខ្ញុំទៅក្រុម ឬប្រើក្នុងការសន្ទនាឯកជន\n` +
-    `🔔 ខ្ញុំជូនដំណឹងភ្លាមៗ នៅពេលមានការលប់សារ\n\n` +
+    `✅ បន្ថែមខ្ញុំទៅក្រុម ដើម្បី monitor\n` +
+    `🔔 ការជូនដំណឹងចូលមក ${b("private chat")} របស់អ្នកដោយផ្ទាល់\n\n` +
+    `⚠️ ${b("ចំណាំ:")} ចាប់ផ្ដើម Bot នៅ private chat ជាមុន ដើម្បីទទួល notification\n\n` +
     `វាយ /help ដើម្បីមើលពាក្យបញ្ជា`,
     HTML
   );
@@ -317,7 +319,7 @@ bot.onText(/\/help/, async (msg) => {
 });
 
 bot.onText(/\/myid/, async (msg) => {
-  addUser(msg.chat.id);
+  addUser(msg.chat.id, msg.chat.type);
   await typing(msg.chat.id);
   const userId = msg.from ? msg.from.id : "មិនដឹង";
   const chatId = msg.chat.id;
@@ -334,7 +336,7 @@ bot.onText(/\/myid/, async (msg) => {
 });
 
 bot.onText(/\/status/, async (msg) => {
-  addUser(msg.chat.id);
+  addUser(msg.chat.id, msg.chat.type);
   await typing(msg.chat.id);
   const modeStatus = isSecretaryOn(msg.chat.id) ? "🟢 បើក" : "🔴 បិទ";
   const sessionStatus = SESSION ? "✅ GramJS ភ្ជាប់" : "⚠️ SESSION_STRING មិនទាន់កំណត់";
