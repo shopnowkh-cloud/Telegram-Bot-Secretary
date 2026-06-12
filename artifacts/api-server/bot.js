@@ -1,5 +1,7 @@
 const TelegramBot = require("node-telegram-bot-api");
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
 
 // ── HTTP server សម្រាប់ health check ──────────────────────────────────────
 const PORT = process.env.PORT || 8080;
@@ -15,9 +17,37 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-// ── Active Users — ទទួល connect/disconnect notification ───────────────────
-// រក្សាទុក chatId របស់អ្នកប្រើទាំងអស់ដែលបានប្រើ Bot
-const activeUsers = new Set();
+// ── Active Users — persist ទៅ file ដើម្បីរក្សាទុកពេល restart ────────────
+const USERS_FILE = path.join(__dirname, "users.json");
+
+function loadUsers() {
+  try {
+    const data = fs.readFileSync(USERS_FILE, "utf8");
+    const ids = JSON.parse(data);
+    return new Set(ids);
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function saveUsers(set) {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify([...set]), "utf8");
+  } catch (err) {
+    console.error(`[កំហុស] save users: ${err.message}`);
+  }
+}
+
+function addUser(chatId) {
+  if (!activeUsers.has(chatId)) {
+    activeUsers.add(chatId);
+    saveUsers(activeUsers);
+    console.log(`[User] ចុះឈ្មោះ chat ${chatId} — សរុប: ${activeUsers.size} នាក់`);
+  }
+}
+
+const activeUsers = loadUsers();
+console.log(`[User] load ${activeUsers.size} users ពី file`);
 
 const bot = new TelegramBot(TOKEN, {
   polling: {
@@ -39,19 +69,29 @@ const bot = new TelegramBot(TOKEN, {
 
 // ── Notify all active users ───────────────────────────────────────────────
 async function notifyAll(text) {
+  if (activeUsers.size === 0) {
+    console.log("[ព័ត៌មាន] notifyAll — គ្មានអ្នកប្រើ (វាយ /start ក្នុង Bot ជាមុន)");
+    return;
+  }
+  let removed = false;
   for (const chatId of activeUsers) {
     try {
       await bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
     } catch (err) {
-      // ប្រសិនបើ user block Bot ឬ chat លែងមាន — លុបចេញ
-      if (err.message && (err.message.includes("bot was blocked") || err.message.includes("chat not found"))) {
+      if (err.message && (
+        err.message.includes("bot was blocked") ||
+        err.message.includes("chat not found") ||
+        err.message.includes("user is deactivated")
+      )) {
         activeUsers.delete(chatId);
-        console.log(`[ព័ត៌មាន] លុប chat ${chatId} ចេញពី active users`);
+        removed = true;
+        console.log(`[ព័ត៌មាន] លុប chat ${chatId} — block/not found`);
       } else {
         console.error(`[កំហុស] មិនអាចផ្ញើជូន ${chatId}: ${err.message}`);
       }
     }
   }
+  if (removed) saveUsers(activeUsers);
 }
 
 // ── Secretary Mode toggle (per chat) ─────────────────────────────────────
@@ -126,7 +166,7 @@ async function typing(chatId) {
 
 // ── Commands ──────────────────────────────────────────────────────────────
 bot.onText(/\/start/, async (msg) => {
-  activeUsers.add(msg.chat.id); // ចុះឈ្មោះ user ឱ្យទទួល connect/disconnect notification
+  addUser(msg.chat.id);
   await typing(msg.chat.id);
   const name = msg.from ? getDisplayName(msg.from) : "មិត្ត";
   const modeStatus = isSecretaryOn(msg.chat.id) ? "🟢 បើក" : "🔴 បិទ";
@@ -164,7 +204,7 @@ bot.onText(/\/help/, async (msg) => {
 });
 
 bot.onText(/\/myid/, async (msg) => {
-  activeUsers.add(msg.chat.id);
+  addUser(msg.chat.id);
   await typing(msg.chat.id);
   const userId = msg.from ? msg.from.id : "មិនដឹង";
   const chatId = msg.chat.id;
@@ -182,7 +222,7 @@ bot.onText(/\/myid/, async (msg) => {
 });
 
 bot.onText(/\/status/, async (msg) => {
-  activeUsers.add(msg.chat.id);
+  addUser(msg.chat.id);
   await typing(msg.chat.id);
   const total = messageStore.size;
   const modeStatus = isSecretaryOn(msg.chat.id) ? "🟢 បើក" : "🔴 បិទ";
