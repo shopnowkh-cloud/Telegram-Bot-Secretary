@@ -191,6 +191,28 @@ bot.onText(/\/status/, async (msg) => {
   );
 });
 
+// /secretary_on និង /secretary_off (menu commands)
+bot.onText(/\/secretary_on/, async (msg) => {
+  await typing(msg.chat.id);
+  secretaryMode.set(msg.chat.id, true);
+  await bot.sendMessage(
+    msg.chat.id,
+    `🟢 *Secretary Mode បានបើក!*\n\nខ្ញុំនឹងតាមដាន ហើយជូនដំណឹងភ្លាមៗ នៅពេលណាមានការលប់សារ។`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+bot.onText(/\/secretary_off/, async (msg) => {
+  await typing(msg.chat.id);
+  secretaryMode.set(msg.chat.id, false);
+  await bot.sendMessage(
+    msg.chat.id,
+    `🔴 *Secretary Mode បានបិទ!*\n\nខ្ញុំនឹងមិនជូនដំណឹងអំពីការលប់សារទៀតទេ។`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+// /secretary on|off (text fallback)
 bot.onText(/\/secretary (.+)/, async (msg, match) => {
   await typing(msg.chat.id);
   const arg = (match[1] || "").trim().toLowerCase();
@@ -212,7 +234,7 @@ bot.onText(/\/secretary (.+)/, async (msg, match) => {
   } else {
     await bot.sendMessage(
       msg.chat.id,
-      `❓ សូមប្រើ: /secretary on ឬ /secretary off`,
+      `❓ សូមប្រើ: /secretary_on ឬ /secretary_off`,
       { parse_mode: "Markdown" }
     );
   }
@@ -400,6 +422,18 @@ bot.getMe().then(async (me) => {
   console.log(`✅ Bot បានចាប់ផ្ដើម: @${me.username} (id: ${me.id})`);
   console.log(`📋 Secretary Mode: បើកដោយស្វ័យប្រវត្តិ`);
   console.log(`🔔 Connect/Disconnect Alert: ${OWNER_CHAT_ID ? "✅ " + OWNER_CHAT_ID : "⚠️ OWNER_CHAT_ID មិនទាន់កំណត់ — វាយ /myid ដើម្បីយក Chat ID"}`);
+
+  // ── កំណត់ Command Menu ─────────────────────────────────────────────────
+  await bot.setMyCommands([
+    { command: "start",         description: "👋 ចាប់ផ្ដើម / សារស្វាគមន៍" },
+    { command: "help",          description: "📖 មើលជំនួយ និងពាក្យបញ្ជា" },
+    { command: "status",        description: "📊 ស្ថានភាព Bot" },
+    { command: "myid",          description: "🪪 មើល Chat ID របស់អ្នក" },
+    { command: "secretary_on",  description: "🟢 បើក Secretary Mode" },
+    { command: "secretary_off", description: "🔴 បិទ Secretary Mode" },
+    { command: "test",          description: "🧪 សាកល្បង Secretary Mode" },
+  ]);
+  console.log(`📋 Command menu បានកំណត់ក្នុង Telegram ✅`);
 
   await notifyOwner(
     `🟢 *Bot លេខាធិការ — Connected!*\n\n` +
